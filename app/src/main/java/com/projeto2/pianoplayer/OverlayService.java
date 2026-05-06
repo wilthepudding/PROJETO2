@@ -62,18 +62,26 @@ public class OverlayService extends Service {
     }
 
     private void showControls() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.HORIZONTAL);
-        box.setGravity(Gravity.CENTER);
-        box.setPadding(8, 8, 8, 8);
-        box.setBackgroundColor(0xDD111111);
+        LinearLayout outer = new LinearLayout(this);
+        outer.setOrientation(LinearLayout.VERTICAL);
+        outer.setPadding(8, 8, 8, 8);
+        outer.setBackgroundColor(0xDD111111);
+
+        LinearLayout row1 = new LinearLayout(this);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        row1.setGravity(Gravity.CENTER);
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        row2.setGravity(Gravity.CENTER);
 
         Button play = btn("Tocar/Pausar");
         Button stop = btn("Parar");
         Button songs = btn("Música");
         Button calib = btn("Calibrar");
         Button close = btn("Fechar");
-        box.addView(play); box.addView(stop); box.addView(songs); box.addView(calib); box.addView(close);
+        row1.addView(play); row1.addView(stop); row1.addView(songs);
+        row2.addView(calib); row2.addView(close);
+        outer.addView(row1); outer.addView(row2);
 
         play.setOnClickListener(v -> togglePlay());
         stop.setOnClickListener(v -> stopPlayback());
@@ -81,14 +89,14 @@ public class OverlayService extends Service {
         calib.setOnClickListener(v -> startCalibration());
         close.setOnClickListener(v -> stopSelf());
 
-        controls = box;
-        WindowManager.LayoutParams lp = params(-2, -2);
+        controls = outer;
+        WindowManager.LayoutParams lp = params((int)(getResources().getDisplayMetrics().widthPixels * 0.96f), -2);
         lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
         lp.y = 70;
         wm.addView(controls, lp);
     }
 
-    private Button btn(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(10); return b; }
+    private Button btn(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(10); b.setAllCaps(false); return b; }
 
     private WindowManager.LayoutParams params(int w, int h) {
         int type = Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE;
@@ -128,7 +136,7 @@ public class OverlayService extends Service {
         songView = scroll;
         WindowManager.LayoutParams lp = params((int)(getResources().getDisplayMetrics().widthPixels * 0.86f), (int)(getResources().getDisplayMetrics().heightPixels * 0.45f));
         lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        lp.y = 170;
+        lp.y = 210;
         wm.addView(songView, lp);
     }
 
