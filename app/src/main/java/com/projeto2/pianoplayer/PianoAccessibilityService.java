@@ -27,11 +27,19 @@ public class PianoAccessibilityService extends AccessibilityService {
     }
 
     public boolean tap(float x, float y) {
-        if (Build.VERSION.SDK_INT < 24) return false;
-        Path p = new Path();
-        p.moveTo(x, y);
-        GestureDescription.StrokeDescription stroke = new GestureDescription.StrokeDescription(p, 0, 45);
-        GestureDescription gesture = new GestureDescription.Builder().addStroke(stroke).build();
-        return dispatchGesture(gesture, null, null);
+        return multiTap(new float[]{x}, new float[]{y}, 38);
+    }
+
+    public boolean multiTap(float[] xs, float[] ys, long durationMs) {
+        if (Build.VERSION.SDK_INT < 24 || xs == null || ys == null) return false;
+        int count = Math.min(xs.length, ys.length);
+        if (count <= 0) return false;
+        GestureDescription.Builder builder = new GestureDescription.Builder();
+        for (int i = 0; i < count; i++) {
+            Path p = new Path();
+            p.moveTo(xs[i], ys[i]);
+            builder.addStroke(new GestureDescription.StrokeDescription(p, 0, Math.max(20, durationMs)));
+        }
+        return dispatchGesture(builder.build(), null, null);
     }
 }
