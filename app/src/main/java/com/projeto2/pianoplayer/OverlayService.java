@@ -39,7 +39,6 @@ public class OverlayService extends Service {
     private long songBaseMs;
     private long realBaseMs;
     private long pausedAt;
-    private float speed = 1.0f;
     private List<MidiFile.NoteEvent> notes = new ArrayList<>();
     private final String[] keys = {"Q","E","R","T","Y","U","P","1","2","3","4","5","6","7","8","9","0"};
     private int calibrating = -1;
@@ -74,20 +73,13 @@ public class OverlayService extends Service {
         Button play = btn("Tocar");
         Button stop = btn("Parar");
         Button songs = btn("Música");
-        Button speedBtn = btn("Vel 1x");
         Button calib = btn("Calibrar");
         Button close = btn("Fechar");
-        box.addView(play); box.addView(stop); box.addView(songs); box.addView(speedBtn); box.addView(calib); box.addView(close);
+        box.addView(play); box.addView(stop); box.addView(songs); box.addView(calib); box.addView(close);
 
         play.setOnClickListener(v -> togglePlay());
         stop.setOnClickListener(v -> stopPlayback());
         songs.setOnClickListener(v -> toggleSongPicker());
-        speedBtn.setOnClickListener(v -> {
-            if (speed == 1.0f) speed = 0.75f; else if (speed == 0.75f) speed = 0.5f; else speed = 1.0f;
-            speedBtn.setText(speed == 1.0f ? "Vel 1x" : (speed == 0.75f ? "Vel .75" : "Vel .5"));
-            if (playing && !paused) { songBaseMs = currentSongMs(); realBaseMs = SystemClock.uptimeMillis(); }
-            toast("Velocidade: " + speedBtn.getText());
-        });
         calib.setOnClickListener(v -> startCalibration());
         close.setOnClickListener(v -> stopSelf());
 
@@ -186,7 +178,7 @@ public class OverlayService extends Service {
     private void stopPlayback() { playing = false; paused = false; nextIndex = 0; handler.removeCallbacksAndMessages(null); toast("Parado"); }
 
     private long currentSongMs() {
-        return songBaseMs + (long)((SystemClock.uptimeMillis() - realBaseMs) * speed);
+        return songBaseMs + (SystemClock.uptimeMillis() - realBaseMs);
     }
 
     private void scheduleNextBatch() {
@@ -194,7 +186,7 @@ public class OverlayService extends Service {
         if (nextIndex >= notes.size()) { stopPlayback(); return; }
         long nowSong = currentSongMs();
         long nextTime = notes.get(nextIndex).timeMs;
-        long delay = Math.max(0, (long)((nextTime - nowSong) / speed));
+        long delay = Math.max(0, nextTime - nowSong);
         handler.postDelayed(() -> {
             if (!playing || paused) return;
             playDueNotes(currentSongMs() + 12);
