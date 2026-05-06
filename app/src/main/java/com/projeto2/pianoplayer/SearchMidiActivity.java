@@ -114,10 +114,10 @@ public class SearchMidiActivity extends Activity {
                 "var x=new XMLHttpRequest();" +
                 "x.open('GET','" + blobUrl.replace("'", "\\'") + "',true);" +
                 "x.responseType='blob';" +
-                "x.onload=function(){if(x.status===0||x.status===200){var r=new FileReader();r.onloadend=function(){MidiBridge.offerMidi(r.result,document.title||'online_sequencer','Online Sequencer');};r.onerror=function(){MidiBridge.error('Falha ao ler blob MIDI');};r.readAsDataURL(x.response);}else{MidiBridge.error('HTTP '+x.status);}};" +
-                "x.onerror=function(){MidiBridge.error('Failed to fetch');};" +
+                "x.onload=function(){if(x.status===0||x.status===200){var r=new FileReader();r.onloadend=function(){MidiBridge.offerMidi(r.result,document.title||'online_sequencer','Online Sequencer');};r.onerror=function(){MidiBridge.error('Falha ao ler blob MIDI');};r.readAsDataURL(x.response);}else{}};" +
+                "x.onerror=function(){};" +
                 "x.send();" +
-                "}catch(e){MidiBridge.error(String(e));}" +
+                "}catch(e){}" +
                 "})();";
         web.evaluateJavascript(js, null);
     }
