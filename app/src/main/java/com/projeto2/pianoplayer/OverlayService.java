@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -35,8 +36,10 @@ public class OverlayService extends Service {
     private boolean playing = false;
     private boolean paused = false;
     private int nextIndex = 0;
-    private long playStart;
+    private long songBaseMs;
+    private long realBaseMs;
     private long pausedAt;
+    private float speed = 1.0f;
     private List<MidiFile.NoteEvent> notes = new ArrayList<>();
     private final String[] keys = {"Q","E","R","T","Y","U","P","1","2","3","4","5","6","7","8","9","0"};
     private int calibrating = -1;
@@ -71,13 +74,20 @@ public class OverlayService extends Service {
         Button play = btn("Tocar");
         Button stop = btn("Parar");
         Button songs = btn("Música");
+        Button speedBtn = btn("Vel 1x");
         Button calib = btn("Calibrar");
         Button close = btn("Fechar");
-        box.addView(play); box.addView(stop); box.addView(songs); box.addView(calib); box.addView(close);
+        box.addView(play); box.addView(stop); box.addView(songs); box.addView(speedBtn); box.addView(calib); box.addView(close);
 
         play.setOnClickListener(v -> togglePlay());
         stop.setOnClickListener(v -> stopPlayback());
         songs.setOnClickListener(v -> toggleSongPicker());
+        speedBtn.setOnClickListener(v -> {
+            if (speed == 1.0f) speed = 0.75f; else if (speed == 0.75f) speed = 0.5f; else speed = 1.0f;
+            speedBtn.setText(speed == 1.0f ? "Vel 1x" : (speed == 0.75f ? "Vel .75" : "Vel .5"));
+            if (playing && !paused) { songBaseMs = currentSongMs(); realBaseMs = SystemClock.uptimeMillis(); }
+            toast("Velocidade: " + speedBtn.getText());
+        });
         calib.setOnClickListener(v -> startCalibration());
         close.setOnClickListener(v -> stopSelf());
 
@@ -158,34 +168,87 @@ public class OverlayService extends Service {
     }
 
     private void togglePlay() {
-        if (playing && !paused) { paused = true; pausedAt = System.currentTimeMillis(); toast("Pausado"); return; }
-        if (playing) { paused = false; playStart += System.currentTimeMillis() - pausedAt; scheduleNext(); toast("Continuando"); return; }
+        if (playing && !paused) { paused = true; pausedAt = SystemClock.uptimeMillis(); handler.removeCallbacksAndMessages(null); toast("Pausado"); return; }
+        if (playing) { paused = false; realBaseMs += SystemClock.uptimeMillis() - pausedAt; scheduleNextBatch(); toast("Continuando"); return; }
         MusicLibrary.Song selected = MusicLibrary.selected(this);
         String saved = selected != null ? selected.uri : prefs.getString("midi_uri", null);
         if (saved == null) { toast("Importe ou baixe um MIDI primeiro"); return; }
+        if (PianoAccessibilityService.instance == null) { toast("Ative a acessibilidade do app primeiro"); return; }
         try {
             notes = MidiFile.load(this, Uri.parse(saved));
-            nextIndex = 0; playing = true; paused = false; playStart = System.currentTimeMillis(); scheduleNext();
+            notes = simplifyNotes(notes);
+            nextIndex = 0; playing = true; paused = false; songBaseMs = 0; realBaseMs = SystemClock.uptimeMillis();
+            scheduleNextBatch();
             toast("Tocando " + notes.size() + " notas");
         } catch (Exception e) { toast("Erro ao ler MIDI: " + e.getMessage()); }
     }
 
     private void stopPlayback() { playing = false; paused = false; nextIndex = 0; handler.removeCallbacksAndMessages(null); toast("Parado"); }
 
-    private void scheduleNext() {
-        if (!playing || paused || nextIndex >= notes.size()) { if (nextIndex >= notes.size()) stopPlayback(); return; }
-        MidiFile.NoteEvent ev = notes.get(nextIndex);
-        long delay = Math.max(0, ev.timeMs - (System.currentTimeMillis() - playStart));
-        handler.postDelayed(() -> { playNote(notes.get(nextIndex).note); nextIndex++; scheduleNext(); }, delay);
+    private long currentSongMs() {
+        return songBaseMs + (long)((SystemClock.uptimeMillis() - realBaseMs) * speed);
     }
 
-    private void playNote(int midiNote) {
+    private void scheduleNextBatch() {
+        if (!playing || paused) return;
+        if (nextIndex >= notes.size()) { stopPlayback(); return; }
+        long nowSong = currentSongMs();
+        long nextTime = notes.get(nextIndex).timeMs;
+        long delay = Math.max(0, (long)((nextTime - nowSong) / speed));
+        handler.postDelayed(() -> {
+            if (!playing || paused) return;
+            playDueNotes(currentSongMs() + 12);
+            scheduleNextBatch();
+        }, delay);
+    }
+
+    private void playDueNotes(long targetSongMs) {
+        ArrayList<String> batchKeys = new ArrayList<>();
+        long batchStart = nextIndex < notes.size() ? notes.get(nextIndex).timeMs : targetSongMs;
+        while (nextIndex < notes.size()) {
+            MidiFile.NoteEvent ev = notes.get(nextIndex);
+            if (ev.timeMs > targetSongMs || ev.timeMs - batchStart > 18) break;
+            String k = keyForMidi(ev.note);
+            if (!batchKeys.contains(k)) batchKeys.add(k);
+            nextIndex++;
+        }
+        playKeys(batchKeys);
+    }
+
+    private List<MidiFile.NoteEvent> simplifyNotes(List<MidiFile.NoteEvent> input) {
+        ArrayList<MidiFile.NoteEvent> out = new ArrayList<>();
+        String lastKey = "";
+        long lastTime = -9999;
+        for (MidiFile.NoteEvent ev : input) {
+            String k = keyForMidi(ev.note);
+            if (k.equals(lastKey) && ev.timeMs - lastTime < 45) continue;
+            out.add(ev);
+            lastKey = k;
+            lastTime = ev.timeMs;
+        }
+        return out;
+    }
+
+    private String keyForMidi(int midiNote) {
         int idx = Math.floorMod(midiNote - 60, keys.length);
-        String k = keys[idx];
-        float x = prefs.getFloat("key_" + k + "_x", -1);
-        float y = prefs.getFloat("key_" + k + "_y", -1);
-        if (x < 0 || y < 0 || PianoAccessibilityService.instance == null) return;
-        PianoAccessibilityService.instance.tap(x, y);
+        return keys[idx];
+    }
+
+    private void playKeys(List<String> batchKeys) {
+        if (batchKeys == null || batchKeys.isEmpty()) return;
+        if (PianoAccessibilityService.instance == null) { stopPlayback(); toast("Acessibilidade desativada"); return; }
+        ArrayList<Float> xs = new ArrayList<>();
+        ArrayList<Float> ys = new ArrayList<>();
+        for (String k : batchKeys) {
+            float x = prefs.getFloat("key_" + k + "_x", -1);
+            float y = prefs.getFloat("key_" + k + "_y", -1);
+            if (x >= 0 && y >= 0) { xs.add(x); ys.add(y); }
+        }
+        if (xs.isEmpty()) return;
+        float[] xa = new float[xs.size()];
+        float[] ya = new float[ys.size()];
+        for (int i = 0; i < xs.size(); i++) { xa[i] = xs.get(i); ya[i] = ys.get(i); }
+        PianoAccessibilityService.instance.multiTap(xa, ya, 34);
     }
 
     private void startCalibration() {
