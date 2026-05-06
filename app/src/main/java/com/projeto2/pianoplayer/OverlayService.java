@@ -39,6 +39,7 @@ public class OverlayService extends Service {
     private long songBaseMs;
     private long realBaseMs;
     private long pausedAt;
+    private int transpose = 0;
     private List<MidiFile.NoteEvent> notes = new ArrayList<>();
     private final String[] keys = {"Q","E","R","T","Y","U","P","1","2","3","4","5","6","7","8","9","0"};
     private int calibrating = -1;
@@ -168,6 +169,7 @@ public class OverlayService extends Service {
         if (PianoAccessibilityService.instance == null) { toast("Ative a acessibilidade do app primeiro"); return; }
         try {
             notes = MidiFile.load(this, Uri.parse(saved));
+            transpose = chooseTranspose(notes);
             notes = simplifyNotes(notes);
             nextIndex = 0; playing = true; paused = false; songBaseMs = 0; realBaseMs = SystemClock.uptimeMillis();
             scheduleNextBatch();
@@ -201,7 +203,7 @@ public class OverlayService extends Service {
             MidiFile.NoteEvent ev = notes.get(nextIndex);
             if (ev.timeMs > targetSongMs || ev.timeMs - batchStart > 18) break;
             String k = keyForMidi(ev.note);
-            if (!batchKeys.contains(k)) batchKeys.add(k);
+            if (k != null && !batchKeys.contains(k)) batchKeys.add(k);
             nextIndex++;
         }
         playKeys(batchKeys);
@@ -213,6 +215,7 @@ public class OverlayService extends Service {
         long lastTime = -9999;
         for (MidiFile.NoteEvent ev : input) {
             String k = keyForMidi(ev.note);
+            if (k == null) continue;
             if (k.equals(lastKey) && ev.timeMs - lastTime < 45) continue;
             out.add(ev);
             lastKey = k;
@@ -221,9 +224,48 @@ public class OverlayService extends Service {
         return out;
     }
 
+    private int chooseTranspose(List<MidiFile.NoteEvent> input) {
+        int bestShift = 0;
+        int bestScore = Integer.MIN_VALUE;
+        for (int shift = -48; shift <= 48; shift += 12) {
+            int inRange = 0;
+            int distance = 0;
+            for (MidiFile.NoteEvent ev : input) {
+                int n = ev.note + shift;
+                if (n >= 60 && n <= 76) inRange += 6;
+                int centerDistance = Math.abs(n - 68);
+                distance += Math.min(centerDistance, 24);
+            }
+            int score = inRange - distance;
+            if (score > bestScore) { bestScore = score; bestShift = shift; }
+        }
+        return bestShift;
+    }
+
     private String keyForMidi(int midiNote) {
-        int idx = Math.floorMod(midiNote - 60, keys.length);
-        return keys[idx];
+        int n = midiNote + transpose;
+        while (n < 60) n += 12;
+        while (n > 76) n -= 12;
+        switch (n) {
+            case 60: return "1";
+            case 61: return "Q";
+            case 62: return "2";
+            case 63: return "E";
+            case 64: return "3";
+            case 65: return "4";
+            case 66: return "R";
+            case 67: return "5";
+            case 68: return "T";
+            case 69: return "6";
+            case 70: return "Y";
+            case 71: return "7";
+            case 72: return "8";
+            case 73: return "U";
+            case 74: return "9";
+            case 75: return "P";
+            case 76: return "0";
+            default: return null;
+        }
     }
 
     private void playKeys(List<String> batchKeys) {
