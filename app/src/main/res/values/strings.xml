@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Piano MIDI Overlay</string>
+    <string name="accessibility_description">Permite que o app toque nas coordenadas calibradas das teclas enquanto você controla pela janela flutuante.</string>
+</resources>
