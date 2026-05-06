@@ -3,6 +3,7 @@ package com.projeto2.pianoplayer;
 import android.content.Context;
 import android.net.Uri;
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,7 +18,8 @@ public class MidiFile {
     }
     public static List<NoteEvent> load(Context c, Uri uri) throws Exception {
         byte[] data;
-        try (InputStream in = c.getContentResolver().openInputStream(uri); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+        InputStream raw = "file".equals(uri.getScheme()) ? new FileInputStream(uri.getPath()) : c.getContentResolver().openInputStream(uri);
+        try (InputStream in = raw; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             byte[] buf = new byte[8192]; int n;
             while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
             data = out.toByteArray();
