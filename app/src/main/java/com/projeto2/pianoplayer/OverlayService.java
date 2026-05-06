@@ -39,7 +39,6 @@ public class OverlayService extends Service {
     private long songBaseMs;
     private long realBaseMs;
     private long pausedAt;
-    private float speed = 1.0f;
     private List<MidiFile.NoteEvent> notes = new ArrayList<>();
     private final String[] keys = {"Q","E","R","T","Y","U","P","1","2","3","4","5","6","7","8","9","0"};
     private int calibrating = -1;
@@ -179,7 +178,7 @@ public class OverlayService extends Service {
     private void stopPlayback() { playing = false; paused = false; nextIndex = 0; handler.removeCallbacksAndMessages(null); toast("Parado"); }
 
     private long currentSongMs() {
-        return songBaseMs + (long)((SystemClock.uptimeMillis() - realBaseMs) * speed);
+        return songBaseMs + (SystemClock.uptimeMillis() - realBaseMs);
     }
 
     private void scheduleNextBatch() {
@@ -187,7 +186,7 @@ public class OverlayService extends Service {
         if (nextIndex >= notes.size()) { stopPlayback(); return; }
         long nowSong = currentSongMs();
         long nextTime = notes.get(nextIndex).timeMs;
-        long delay = Math.max(0, (long)((nextTime - nowSong) / speed));
+        long delay = Math.max(0, nextTime - nowSong);
         handler.postDelayed(() -> {
             if (!playing || paused) return;
             playDueNotes(currentSongMs() + 12);
