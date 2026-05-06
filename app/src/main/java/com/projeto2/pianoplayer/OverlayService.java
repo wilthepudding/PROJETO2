@@ -4,7 +4,6 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -19,6 +18,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -29,6 +29,7 @@ public class OverlayService extends Service {
     private WindowManager wm;
     private View controls;
     private View captureView;
+    private View songView;
     private SharedPreferences prefs;
     private Handler handler = new Handler(Looper.getMainLooper());
     private boolean playing = false;
@@ -40,7 +41,7 @@ public class OverlayService extends Service {
     private final String[] keys = {"Q","E","R","T","Y","U","P","1","2","3","4","5","6","7","8","9","0"};
     private int calibrating = -1;
 
-    public IBinder onBind(Intent intent) { return null; }
+    public IBinder onBind(android.content.Intent intent) { return null; }
 
     public void onCreate() {
         super.onCreate();
@@ -64,17 +65,19 @@ public class OverlayService extends Service {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.HORIZONTAL);
         box.setGravity(Gravity.CENTER);
-        box.setPadding(10, 10, 10, 10);
+        box.setPadding(8, 8, 8, 8);
         box.setBackgroundColor(0xDD111111);
 
         Button play = btn("Tocar/Pausar");
         Button stop = btn("Parar");
+        Button songs = btn("Música");
         Button calib = btn("Calibrar");
         Button close = btn("Fechar");
-        box.addView(play); box.addView(stop); box.addView(calib); box.addView(close);
+        box.addView(play); box.addView(stop); box.addView(songs); box.addView(calib); box.addView(close);
 
         play.setOnClickListener(v -> togglePlay());
         stop.setOnClickListener(v -> stopPlayback());
+        songs.setOnClickListener(v -> toggleSongPicker());
         calib.setOnClickListener(v -> startCalibration());
         close.setOnClickListener(v -> stopSelf());
 
@@ -85,18 +88,64 @@ public class OverlayService extends Service {
         wm.addView(controls, lp);
     }
 
-    private Button btn(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(11); return b; }
+    private Button btn(String s) { Button b = new Button(this); b.setText(s); b.setTextSize(10); return b; }
 
     private WindowManager.LayoutParams params(int w, int h) {
         int type = Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE;
         return new WindowManager.LayoutParams(w, h, type, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
     }
 
+    private void toggleSongPicker() {
+        if (songView != null) { wm.removeView(songView); songView = null; return; }
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(18, 18, 18, 18);
+        box.setBackgroundColor(0xEE222222);
+        scroll.addView(box);
+        TextView title = new TextView(this);
+        title.setText("Selecionar música");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(18);
+        box.addView(title);
+        List<MusicLibrary.Song> songs = MusicLibrary.list(this);
+        if (songs.isEmpty()) {
+            TextView empty = overlayText("Nenhuma música baixada");
+            box.addView(empty);
+        } else {
+            for (MusicLibrary.Song s : songs) {
+                TextView item = overlayText(s.title + "\n" + s.author + " | " + s.notes + " notas | " + MusicLibrary.duration(s.durationMs));
+                item.setPadding(10, 14, 10, 14);
+                item.setOnClickListener(v -> {
+                    stopPlayback();
+                    MusicLibrary.select(this, s.id);
+                    toast("Selecionada: " + s.title);
+                    if (songView != null) { wm.removeView(songView); songView = null; }
+                });
+                box.addView(item);
+            }
+        }
+        songView = scroll;
+        WindowManager.LayoutParams lp = params((int)(getResources().getDisplayMetrics().widthPixels * 0.86f), (int)(getResources().getDisplayMetrics().heightPixels * 0.45f));
+        lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        lp.y = 170;
+        wm.addView(songView, lp);
+    }
+
+    private TextView overlayText(String s) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextColor(Color.WHITE);
+        t.setTextSize(15);
+        return t;
+    }
+
     private void togglePlay() {
         if (playing && !paused) { paused = true; pausedAt = System.currentTimeMillis(); toast("Pausado"); return; }
         if (playing) { paused = false; playStart += System.currentTimeMillis() - pausedAt; scheduleNext(); toast("Continuando"); return; }
-        String saved = prefs.getString("midi_uri", null);
-        if (saved == null) { toast("Importe um MIDI primeiro"); return; }
+        MusicLibrary.Song selected = MusicLibrary.selected(this);
+        String saved = selected != null ? selected.uri : prefs.getString("midi_uri", null);
+        if (saved == null) { toast("Importe ou baixe um MIDI primeiro"); return; }
         try {
             notes = MidiFile.load(this, Uri.parse(saved));
             nextIndex = 0; playing = true; paused = false; playStart = System.currentTimeMillis(); scheduleNext();
@@ -163,6 +212,7 @@ public class OverlayService extends Service {
         stopPlayback();
         if (controls != null) wm.removeView(controls);
         if (captureView != null) wm.removeView(captureView);
+        if (songView != null) wm.removeView(songView);
         super.onDestroy();
     }
 }
