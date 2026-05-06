@@ -2,6 +2,7 @@ package com.projeto2.pianoplayer;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -10,24 +11,37 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.util.List;
 
 public class MainActivity extends Activity {
     private static final int PICK_MIDI = 10;
     private TextView midiStatus;
+    private LinearLayout libraryBox;
     private SharedPreferences prefs;
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = getSharedPreferences("piano", MODE_PRIVATE);
+        buildUi();
+        if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 33);
+    }
 
+    protected void onResume() { super.onResume(); refreshStatus(); refreshLibrary(); }
+
+    private void buildUi() {
+        ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setPadding(36, 36, 36, 36);
+        scroll.addView(root);
 
         TextView title = new TextView(this);
         title.setText("Piano MIDI Overlay");
@@ -45,6 +59,20 @@ public class MainActivity extends Activity {
         importBtn.setOnClickListener(v -> openMidiPicker());
         root.addView(importBtn, new LinearLayout.LayoutParams(-1, -2));
 
+        EditText search = new EditText(this);
+        search.setHint("Pesquisar MIDI no Online Sequencer");
+        search.setSingleLine(true);
+        root.addView(search, new LinearLayout.LayoutParams(-1, -2));
+
+        Button searchBtn = new Button(this);
+        searchBtn.setText("Pesquisar MIDI/MID");
+        searchBtn.setOnClickListener(v -> {
+            Intent i = new Intent(this, SearchMidiActivity.class);
+            i.putExtra("q", search.getText().toString());
+            startActivity(i);
+        });
+        root.addView(searchBtn, new LinearLayout.LayoutParams(-1, -2));
+
         Button overlayBtn = new Button(this);
         overlayBtn.setText("Abrir janela flutuante");
         overlayBtn.setOnClickListener(v -> openOverlay());
@@ -55,21 +83,66 @@ public class MainActivity extends Activity {
         accessBtn.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         root.addView(accessBtn, new LinearLayout.LayoutParams(-1, -2));
 
+        TextView libTitle = new TextView(this);
+        libTitle.setText("\nBiblioteca de músicas baixadas");
+        libTitle.setTextSize(20);
+        libTitle.setGravity(Gravity.CENTER);
+        root.addView(libTitle, new LinearLayout.LayoutParams(-1, -2));
+
+        libraryBox = new LinearLayout(this);
+        libraryBox.setOrientation(LinearLayout.VERTICAL);
+        root.addView(libraryBox, new LinearLayout.LayoutParams(-1, -2));
+
         TextView help = new TextView(this);
-        help.setText("Use: 1) importe um arquivo .mid/.midi; 2) permita sobreposição; 3) ative a acessibilidade do app; 4) abra a janela flutuante e calibre as teclas.");
+        help.setText("Toque em uma música para selecionar. Toque e segure para excluir com confirmação.");
         help.setGravity(Gravity.CENTER);
         help.setPadding(0, 24, 0, 0);
         root.addView(help, new LinearLayout.LayoutParams(-1, -2));
 
-        setContentView(root);
+        setContentView(scroll);
         refreshStatus();
-
-        if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 33);
+        refreshLibrary();
     }
 
     private void refreshStatus() {
+        MusicLibrary.Song s = MusicLibrary.selected(this);
         String uri = prefs.getString("midi_uri", null);
-        midiStatus.setText(uri == null ? "Nenhum MIDI importado" : "MIDI importado e salvo");
+        if (s != null) midiStatus.setText("Selecionada: " + s.title);
+        else midiStatus.setText(uri == null ? "Nenhum MIDI importado" : "MIDI importado e salvo");
+    }
+
+    private void refreshLibrary() {
+        if (libraryBox == null) return;
+        libraryBox.removeAllViews();
+        List<MusicLibrary.Song> songs = MusicLibrary.list(this);
+        if (songs.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("Nenhuma música baixada ainda.");
+            empty.setGravity(Gravity.CENTER);
+            libraryBox.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+            return;
+        }
+        for (MusicLibrary.Song s : songs) {
+            TextView item = new TextView(this);
+            item.setText(s.title + "\nAutor: " + s.author + " | Notas: " + s.notes + " | Duração: " + MusicLibrary.duration(s.durationMs));
+            item.setTextSize(16);
+            item.setPadding(18, 18, 18, 18);
+            item.setBackgroundColor(0xFFEFEFEF);
+            item.setOnClickListener(v -> { MusicLibrary.select(this, s.id); refreshStatus(); Toast.makeText(this, "Música selecionada", Toast.LENGTH_SHORT).show(); });
+            item.setOnLongClickListener(v -> { confirmDelete(s); return true; });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.setMargins(0, 8, 0, 8);
+            libraryBox.addView(item, lp);
+        }
+    }
+
+    private void confirmDelete(MusicLibrary.Song s) {
+        new AlertDialog.Builder(this)
+                .setTitle("Deletar música?")
+                .setMessage("Deseja deletar \"" + s.title + "\" da biblioteca?")
+                .setPositiveButton("Deletar", (d, w) -> { MusicLibrary.delete(this, s.id); refreshStatus(); refreshLibrary(); })
+                .setNegativeButton("Cancelar", null)
+                .show();
     }
 
     private void openMidiPicker() {
