@@ -66,12 +66,12 @@ public class SearchMidiActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return !isAllowedUrl(request.getUrl().toString());
+                return handleNavigation(request.getUrl().toString());
             }
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                return !isAllowedUrl(url);
+                return handleNavigation(url);
             }
 
             public void onPageFinished(WebView view, String url) {
@@ -88,6 +88,15 @@ public class SearchMidiActivity extends Activity {
         else web.loadUrl("https://onlinesequencer.net/sequences");
     }
 
+    private boolean handleNavigation(String url) {
+        if (url != null && url.startsWith("blob:")) return false;
+        if (isLikelyMidiDownloadUrl(url)) {
+            confirmDownloadMidi(url, cleanTitle(web.getTitle()), "Online Sequencer");
+            return true;
+        }
+        return !isAllowedUrl(url);
+    }
+
     private boolean isAllowedUrl(String raw) {
         try {
             Uri u = Uri.parse(raw);
@@ -96,6 +105,12 @@ public class SearchMidiActivity extends Activity {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private boolean isLikelyMidiDownloadUrl(String raw) {
+        if (!isAllowedUrl(raw)) return false;
+        String lower = raw.toLowerCase();
+        return lower.contains(".mid") || lower.contains(".midi") || lower.contains("midi") || lower.contains("download");
     }
 
     private void doSearch() {
@@ -113,7 +128,7 @@ public class SearchMidiActivity extends Activity {
                 "function title(){return document.title||document.querySelector('h1')?.innerText||'online_sequencer';}" +
                 "function sendBlob(blob){try{if(blob.size>5242880){MidiBridge.error('MIDI muito grande');return;}var r=new FileReader();r.onloadend=function(){MidiBridge.offerMidi(r.result,title(),'Online Sequencer');};r.onerror=function(){MidiBridge.error('Falha ao ler MIDI gerado');};r.readAsDataURL(blob);}catch(e){MidiBridge.error(String(e));}}" +
                 "var oldCreate=URL.createObjectURL;URL.createObjectURL=function(obj){try{if(window.__wantMidiDownload&&obj instanceof Blob){sendBlob(obj);window.__wantMidiDownload=false;}}catch(e){}return oldCreate.apply(URL,arguments);};" +
-                "document.addEventListener('click',function(ev){var a=ev.target.closest&&ev.target.closest('a,button');var txt=(a&&(a.innerText||a.textContent)||'').toLowerCase();if(txt.indexOf('download midi')>=0||txt.indexOf('midi')>=0){window.__wantMidiDownload=true;setTimeout(function(){window.__wantMidiDownload=false;},5000);}},true);" +
+                "document.addEventListener('click',function(ev){var a=ev.target.closest&&ev.target.closest('a,button');var txt=(a&&(a.innerText||a.textContent)||'').toLowerCase();if(txt.indexOf('download midi')>=0||txt.indexOf('midi')>=0){window.__wantMidiDownload=true;if(a&&a.href&&a.href.indexOf('blob:')!==0){ev.preventDefault();MidiBridge.requestDownload(a.href,title(),'Online Sequencer');return false;}setTimeout(function(){window.__wantMidiDownload=false;},5000);}},true);" +
                 "})();";
         web.evaluateJavascript(js, null);
     }
@@ -126,17 +141,24 @@ public class SearchMidiActivity extends Activity {
         }
         String safeMime = mimetype == null ? "" : mimetype.toLowerCase();
         String safeUrl = url == null ? "" : url.toLowerCase();
-        if (!safeUrl.contains(".mid") && !safeUrl.contains(".midi") && !safeMime.contains("midi")) {
+        if (!isLikelyMidiDownloadUrl(url) && !safeMime.contains("midi")) {
             if (isAllowedUrl(url)) web.loadUrl(url);
             return;
         }
+        confirmDownloadMidi(url, cleanTitle(web.getTitle()), "Online Sequencer");
+    };
+
+    private void confirmDownloadMidi(String url, String title, String author) {
+        if (!isAllowedUrl(url)) { toast("Download bloqueado"); return; }
+        pendingTitle = title;
+        pendingAuthor = author;
         new AlertDialog.Builder(this)
                 .setTitle("Adicionar MIDI")
                 .setMessage("Baixar esta música e adicionar à biblioteca?")
                 .setPositiveButton("Adicionar", (d, w) -> downloadMidi(url))
                 .setNegativeButton("Cancelar", null)
                 .show();
-    };
+    }
 
     private void downloadBlobMidi(String blobUrl) {
         pendingBlobTitle = cleanTitle(web.getTitle());
@@ -156,6 +178,12 @@ public class SearchMidiActivity extends Activity {
     }
 
     public class MidiBridge {
+        @JavascriptInterface
+        public void requestDownload(String url, String title, String author) {
+            if (!isAllowedUrl(web.getUrl())) return;
+            runOnUiThread(() -> confirmDownloadMidi(url, title, author));
+        }
+
         @JavascriptInterface
         public void offerMidi(String dataUrl, String title, String author) {
             if (!isAllowedUrl(web.getUrl())) return;
@@ -194,6 +222,8 @@ public class SearchMidiActivity extends Activity {
 
     private void downloadMidi(String url) {
         if (!isAllowedUrl(url)) { toast("Download bloqueado"); return; }
+        final String chosenTitle = pendingTitle;
+        final String chosenAuthor = pendingAuthor;
         new Thread(() -> {
             try {
                 URL u = new URL(url);
@@ -215,7 +245,9 @@ public class SearchMidiActivity extends Activity {
                 }
                 byte[] bytes = data.toByteArray();
                 validateMidiBytes(bytes);
-                saveBytesToLibrary(bytes, name, name.replace(".midi", "").replace(".mid", ""), "Online Sequencer");
+                String title = chosenTitle == null || chosenTitle.trim().isEmpty() ? name.replace(".midi", "").replace(".mid", "") : chosenTitle;
+                String author = chosenAuthor == null || chosenAuthor.trim().isEmpty() ? "Online Sequencer" : chosenAuthor;
+                saveBytesToLibrary(bytes, name, title, author);
                 runOnUiThread(() -> toast("Música adicionada à biblioteca"));
             } catch (Exception e) {
                 runOnUiThread(() -> toast("Erro ao baixar MIDI: " + e.getMessage()));
