@@ -40,7 +40,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(36, 36, 36, 36);
+        root.setPadding(dp(24), dp(24), dp(24), dp(24));
         scroll.addView(root);
 
         TextView title = new TextView(this);
@@ -49,9 +49,15 @@ public class MainActivity extends Activity {
         title.setGravity(Gravity.CENTER);
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
+        TextView safety = new TextView(this);
+        safety.setText("Use a acessibilidade apenas para tocar nas coordenadas calibradas. Você pode desativar essa permissão a qualquer momento nas configurações do Android.");
+        safety.setGravity(Gravity.CENTER);
+        safety.setPadding(0, dp(12), 0, dp(12));
+        root.addView(safety, new LinearLayout.LayoutParams(-1, -2));
+
         midiStatus = new TextView(this);
         midiStatus.setGravity(Gravity.CENTER);
-        midiStatus.setPadding(0, 24, 0, 24);
+        midiStatus.setPadding(0, dp(16), 0, dp(16));
         root.addView(midiStatus, new LinearLayout.LayoutParams(-1, -2));
 
         Button importBtn = new Button(this);
@@ -80,7 +86,7 @@ public class MainActivity extends Activity {
 
         Button accessBtn = new Button(this);
         accessBtn.setText("Ativar acessibilidade");
-        accessBtn.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        accessBtn.setOnClickListener(v -> explainAccessibility());
         root.addView(accessBtn, new LinearLayout.LayoutParams(-1, -2));
 
         TextView libTitle = new TextView(this);
@@ -96,12 +102,23 @@ public class MainActivity extends Activity {
         TextView help = new TextView(this);
         help.setText("Toque em uma música para selecionar. Toque e segure para excluir com confirmação.");
         help.setGravity(Gravity.CENTER);
-        help.setPadding(0, 24, 0, 0);
+        help.setPadding(0, dp(16), 0, 0);
         root.addView(help, new LinearLayout.LayoutParams(-1, -2));
 
         setContentView(scroll);
         refreshStatus();
         refreshLibrary();
+    }
+
+    private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
+
+    private void explainAccessibility() {
+        new AlertDialog.Builder(this)
+                .setTitle("Permissão de acessibilidade")
+                .setMessage("O app usa a acessibilidade somente para simular toques nas coordenadas das teclas que você calibrar. Ative apenas se concordar com esse uso.")
+                .setPositiveButton("Abrir configurações", (d, w) -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
+                .setNegativeButton("Cancelar", null)
+                .show();
     }
 
     private void refreshStatus() {
@@ -126,12 +143,12 @@ public class MainActivity extends Activity {
             TextView item = new TextView(this);
             item.setText(s.title + "\nAutor: " + s.author + " | Notas: " + s.notes + " | Duração: " + MusicLibrary.duration(s.durationMs));
             item.setTextSize(16);
-            item.setPadding(18, 18, 18, 18);
+            item.setPadding(dp(12), dp(12), dp(12), dp(12));
             item.setBackgroundColor(0xFFEFEFEF);
             item.setOnClickListener(v -> { MusicLibrary.select(this, s.id); refreshStatus(); Toast.makeText(this, "Música selecionada", Toast.LENGTH_SHORT).show(); });
             item.setOnLongClickListener(v -> { confirmDelete(s); return true; });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-            lp.setMargins(0, 8, 0, 8);
+            lp.setMargins(0, dp(6), 0, dp(6));
             libraryBox.addView(item, lp);
         }
     }
@@ -158,6 +175,7 @@ public class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == PICK_MIDI && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
+            if (uri == null) { Toast.makeText(this, "MIDI inválido", Toast.LENGTH_SHORT).show(); return; }
             int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             try { getContentResolver().takePersistableUriPermission(uri, flags); } catch (Exception ignored) {}
             prefs.edit().putString("midi_uri", uri.toString()).apply();
