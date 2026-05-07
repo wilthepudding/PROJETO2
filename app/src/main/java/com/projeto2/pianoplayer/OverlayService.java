@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.SharedPreferences;
+import android.content.pm.ServiceInfo;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.net.Uri;
@@ -32,7 +33,7 @@ public class OverlayService extends Service {
     private View captureView;
     private View songView;
     private SharedPreferences prefs;
-    private Handler handler = new Handler(Looper.getMainLooper());
+    private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean playing = false;
     private boolean paused = false;
     private int nextIndex = 0;
@@ -50,8 +51,14 @@ public class OverlayService extends Service {
         super.onCreate();
         prefs = getSharedPreferences("piano", MODE_PRIVATE);
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-        startForeground(2, makeNotification());
+        startForegroundCompat();
         showControls();
+    }
+
+    private void startForegroundCompat() {
+        Notification notification = makeNotification();
+        if (Build.VERSION.SDK_INT >= 34) startForeground(2, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        else startForeground(2, notification);
     }
 
     private Notification makeNotification() {
@@ -67,7 +74,7 @@ public class OverlayService extends Service {
     private void showControls() {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(5, 5, 5, 5);
+        box.setPadding(dp(5), dp(5), dp(5), dp(5));
         box.setBackgroundColor(0xCC111111);
         box.setGravity(Gravity.CENTER);
 
@@ -99,10 +106,10 @@ public class OverlayService extends Service {
         b.setAllCaps(false);
         b.setMinHeight(0);
         b.setMinimumHeight(0);
-        b.setPadding(2, 2, 2, 2);
+        b.setPadding(dp(2), dp(2), dp(2), dp(2));
         b.setSingleLine(true);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(76), dp(34));
-        lp.setMargins(0, 2, 0, 2);
+        lp.setMargins(0, dp(2), 0, dp(2));
         b.setLayoutParams(lp);
         return b;
     }
@@ -119,7 +126,7 @@ public class OverlayService extends Service {
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(18, 18, 18, 18);
+        box.setPadding(dp(18), dp(18), dp(18), dp(18));
         box.setBackgroundColor(0xEE222222);
         scroll.addView(box);
         TextView title = new TextView(this);
@@ -134,7 +141,7 @@ public class OverlayService extends Service {
         } else {
             for (MusicLibrary.Song s : songs) {
                 TextView item = overlayText(s.title + "\n" + s.author + " | " + s.notes + " notas | " + MusicLibrary.duration(s.durationMs));
-                item.setPadding(10, 14, 10, 14);
+                item.setPadding(dp(10), dp(14), dp(10), dp(14));
                 item.setOnClickListener(v -> {
                     stopPlayback();
                     MusicLibrary.select(this, s.id);
@@ -297,7 +304,7 @@ public class OverlayService extends Service {
         v.setTextColor(Color.WHITE);
         v.setBackgroundColor(0x44000000);
         v.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        v.setPadding(10, 90, 10, 10);
+        v.setPadding(dp(10), dp(90), dp(10), dp(10));
         v.setText("Clique no meio das teclas - " + keys[calibrating]);
         v.setOnTouchListener((view, event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN && calibrating >= 0) {
