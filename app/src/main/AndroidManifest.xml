@@ -27,7 +27,11 @@
         <service
             android:name=".OverlayService"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-initiated floating MIDI controller with a visible overlay that sends calibrated accessibility gestures to piano keys." />
+        </service>
 
         <service
             android:name=".PianoAccessibilityService"
